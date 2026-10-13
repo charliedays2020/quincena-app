@@ -676,6 +676,7 @@ function startPeriod(){const d=parseISO(state.config.inicio);const a=state.confi
   const s0=d?periodFor(d):periodFor(today());return a&&pcmp(a,s0)<0?a:s0;}
 
 /* cadena: saldo inicial + sueldo − compromisos, quincena por quincena */
+function compraT(c){const f=parseISO(c.fecha);const e=f?f.getTime()+864e5-1:Infinity;return Math.min(createdAt(c),e)}
 function createdAt(c){if(c.ts)return +c.ts;const n=parseInt(String(c.id||'').slice(1,9),36);return isFinite(n)&&n>1e12?n:(parseISO(c.fecha)||new Date(0)).getTime()+864e5-1;}
 function saldoHoy(){const cs=state.config.cuentas||[];return cs.reduce((a,x)=>a+(+x.saldo||0)*(x.moneda==='USD'?state.config.tc:1),0);}
 function anchor(){const a=state.config.ancla;if(!a||!a.ts||!(state.config.cuentas||[]).length)return null;const d=new Date(+a.ts);const d0=new Date(d.getFullYear(),d.getMonth(),d.getDate());
@@ -700,9 +701,9 @@ function chain(simx){const A=anchor();
     if(A&&pcmp(p,A.p)===0){let pin=0,pout=0;
       for(const o of oc){
         if(o.ing){if(!A.paid.has(o.key)&&o.d>A.d)pin+=o.L;continue}
-        if(o.compra){if(o.L>0&&createdAt(o.compra)>A.ts)pout+=o.L;continue}
+        if(o.compra){if(o.L>0&&compraT(o.compra)>A.ts)pout+=o.L;continue}
         if(A.paid.has(o.key)||(isPaid(o)&&o.d<A.d))continue;
-        if(o.used!==undefined){const before=state.compras.filter(c=>c.de===o.g.id&&createdAt(c)<=A.ts&&(d=>d&&d>=pdate(p)&&d<pdate(pnext(p)))(parseISO(c.fecha))).reduce((a,c)=>a+amountL(c),0);pout+=Math.max(0,o.L-before);}
+        if(o.used!==undefined){const before=state.compras.filter(c=>c.de===o.g.id&&compraT(c)<=A.ts&&(d=>d&&d>=pdate(p)&&d<pdate(pnext(p)))(parseISO(c.fecha))).reduce((a,c)=>a+amountL(c),0);pout+=Math.max(0,o.L-before);}
         else pout+=o.L;}
       anc={saldo:A.saldo,pin,pout};prevRem=A.saldo;rem=A.saldo+pin-pout;}
     rows.push({p,key:k,oc,sueldo,horas,hasReal,horasL,extra,out,prevRem,rem,inc:sueldo+horasL+extra,anc});
@@ -1369,7 +1370,15 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if
 function selectCode(b){const c=b.parentElement.querySelector('code');if(!c)return;const r=document.createRange();r.selectNodeContents(c);const s=getSelection();s.removeAllRanges();s.addRange(r);toast('Código seleccionado: cópialo con Ctrl+C');}
 
 /* ---------- alertas de compra por correo ---------- */
+function alertCard(last4,isDeb){const c=last4?state.tarjetas.find(x=>{const u=String(x.ultimos||'').replace(/\D/g,'');return u.length>=3&&last4.endsWith(u)}):null;return c&&!isDeb?c:null}
+function parseCompact(t){const out=[];
+  for(const ln of t.split('\n')){const m=ln.match(/^\s*(\d{4})\s*\|\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?\s*\|\s*(.+?)\s*\|\s*(USD|US\$|\$|L\.?|LPS)?\s*([\d,]+(?:\.\d{1,2})?)\s*$/i);if(!m)continue;
+    const last4=m[1],fecha=m[4]+'-'+m[3].padStart(2,'0')+'-'+m[2].padStart(2,'0'),monto=parseFloat(m[9].replace(/,/g,''));if(!(monto>0))continue;
+    const card=alertCard(last4,false);const hh=m[5]?m[5].padStart(2,'0'):'';
+    out.push({monto,moneda:/USD|\$/i.test(m[8]||'')?'USD':'L',concepto:m[7].slice(0,60),fecha,last4,card,debito:!card,hora:hh?hh+':'+m[6]:'',key:'al:'+last4+':'+fecha+':'+(hh?hh+m[6]:'')+':'+monto});}
+  return out;}
 function parseAlerts(txt){const t=String(txt||'').replace(/\r/g,'').replace(/ /g,' ');
+  const compact=parseCompact(t);if(compact.length)return compact;
   const parts=t.split(/(?=N[uú]mero de tarjeta)/i).filter(p=>/Monto/i.test(p));
   const out=[];
   for(const p of parts){const g=re=>{const m=p.match(re);return m?m[1].trim():''};
@@ -1380,16 +1389,19 @@ function parseAlerts(txt){const t=String(txt||'').replace(/\r/g,'').replace(/ /
     const monto=mm?parseFloat(mm[2].replace(/,/g,'')):0;const cur=((mm&&mm[1])||mon||'').toUpperCase();
     const fh=p.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
     if(!(monto>0))continue;
-    const fecha=fh?fh[3]+'-'+String(fh[2]).padStart(2,'0')+'-'+String(fh[1]).padStart(2,'0'):iso(today());
-    const debito=/d[eé]bito/i.test(t)&&!state.tarjetas.some(x=>x.ultimos&&x.ultimos===last4);
-    const card=debito?null:(state.tarjetas.find(x=>x.ultimos&&x.ultimos===last4)||(/promerica/i.test(t)?state.tarjetas.find(x=>/promerica/i.test(x.nombre+' '+(x.banco||''))):null)||null);
-    out.push({monto,moneda:/D[OÓ]LAR|USD|US\$|^\$/.test(cur)?'USD':'L',concepto:com.slice(0,60)||'Compra con tarjeta',fecha,last4,card,debito,hora:fh&&fh[4]?fh[4]+':'+fh[5]:'',key:'al:'+last4+':'+fecha+':'+(fh&&fh[4]?fh[4]+fh[5]:'')+':'+monto});}
+    // Las alertas de débito Promerica (Cuenta de Ahorro) vienen en MM/DD/AAAA
+    const mmdd=/Cuenta de Ahorro/i.test(p);
+    const dd=fh?(mmdd?fh[2]:fh[1]):'',mo=fh?(mmdd?fh[1]:fh[2]):'';
+    const fecha=fh?fh[3]+'-'+String(mo).padStart(2,'0')+'-'+String(dd).padStart(2,'0'):iso(today());
+    const card=alertCard(last4,/d[eé]bito|Cuenta de Ahorro/i.test(p));
+    const hm=fh&&fh[4]?[fh[4],fh[5]]:(p.match(/Hora\s*:?\s*(\d{1,2}):(\d{2})/i)||[]).slice(1);const hh=hm[0]?String(hm[0]).padStart(2,'0'):'';
+    out.push({monto,moneda:/D[OÓ]LAR|USD|US\$|^\$/.test(cur)?'USD':'L',concepto:com.slice(0,60)||'Compra con tarjeta',fecha,last4,card,debito:!card,hora:hh?hh+':'+hm[1]:'',key:'al:'+last4+':'+fecha+':'+(hh?hh+hm[1]:'')+':'+monto});}
   return out;}
 let alertList=[];
 $('kAlertBtn').addEventListener('click',()=>{$('kAlertBox').hidden=!$('kAlertBox').hidden;if(!$('kAlertBox').hidden)$('kAlert').focus();});
 $('kAlert').addEventListener('input',()=>{const L=parseAlerts($('kAlert').value);alertList=L;const msg=$('kAlertMsg');$('kAlertMulti').hidden=true;
   if(!$('kAlert').value.trim()){msg.textContent='';return}
-  if(!L.length){msg.style.color='var(--bad)';msg.textContent='No encontré una alerta de compra en ese texto. Copia el correo completo, desde "Numero de tarjeta" hasta "Fecha y Hora".';return}
+  if(!L.length){msg.style.color='var(--bad)';msg.textContent='No encontré una alerta de compra en ese texto. Copia el correo completo (desde "Numero de tarjeta" hasta la fecha), o pega la lista que te da Claude.';return}
   const dup=L.filter(a=>state.compras.some(c=>c.alerta===a.key)).length;
   if(L.length===1){const a=L[0];$('kMonto').value=a.monto;$('kMon').value=a.moneda;$('kConcepto').value=a.concepto;$('kFecha').value=a.fecha;fillMedios();
     $('kMedio').value=a.card?a.card.id:'';fillDe(true);kPreview();
