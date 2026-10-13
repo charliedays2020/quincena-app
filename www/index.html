@@ -1352,19 +1352,21 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if
 function selectCode(b){const c=b.parentElement.querySelector('code');if(!c)return;const r=document.createRange();r.selectNodeContents(c);const s=getSelection();s.removeAllRanges();s.addRange(r);toast('Código seleccionado: cópialo con Ctrl+C');}
 
 /* ---------- alertas de compra por correo ---------- */
-function parseAlerts(txt){const t=String(txt||'').replace(/\r/g,'');
-  const parts=t.split(/(?=N[uú]mero de tarjeta\s*:)/i).filter(p=>/Monto\s*:/i.test(p));
+function parseAlerts(txt){const t=String(txt||'').replace(/\r/g,'').replace(/ /g,' ');
+  const parts=t.split(/(?=N[uú]mero de tarjeta)/i).filter(p=>/Monto/i.test(p));
   const out=[];
   for(const p of parts){const g=re=>{const m=p.match(re);return m?m[1].trim():''};
-    const last4=(g(/N[uú]mero de tarjeta\s*:\s*([\dXx\-\s*]+)/i).replace(/\D/g,'')).slice(-4);
-    let com=g(/Comercio\s*:\s*([\s\S]*?)\n\s*(?:Pa[ií]s|Moneda|Monto)\s*:/i).replace(/\s+/g,' ');
+    const last4=(g(/N[uú]mero de tarjeta\s*:?\s*([\dXx\-*\s]+)/i).replace(/\D/g,'')).slice(-4);
+    let com=g(/(?:Nombre de comercio|Comercio)\s*:?\s*([\s\S]*?)\n\s*(?:Pa[ií]s|Moneda|Monto|Fecha|Tipo|Ciudad|Referencia)/i).replace(/\s+/g,' ');
     const mon=g(/Moneda\s*:\s*([A-Za-zÁÉÍÓÚáéíóú$ ]+)/i).toUpperCase();
-    const monto=parseFloat(g(/Monto\s*:\s*([\d.,]+)/i).replace(/,/g,''));
-    const fh=p.match(/Fecha y Hora\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/i);
+    const mm=p.match(/Monto(?:\s+de\s+compra)?\s*:?\s*(LPS|L\.?|HNL|USD|US\$|\$)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+    const monto=mm?parseFloat(mm[2].replace(/,/g,'')):0;const cur=((mm&&mm[1])||mon||'').toUpperCase();
+    const fh=p.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
     if(!(monto>0))continue;
     const fecha=fh?fh[3]+'-'+String(fh[2]).padStart(2,'0')+'-'+String(fh[1]).padStart(2,'0'):iso(today());
-    const card=state.tarjetas.find(x=>x.ultimos&&x.ultimos===last4)||(/promerica/i.test(t)&&state.tarjetas.length?state.tarjetas.find(x=>/promerica/i.test(x.nombre+' '+(x.banco||''))):null)||null;
-    out.push({monto,moneda:/D[OÓ]LAR|USD|US\$/.test(mon)?'USD':'L',concepto:com.slice(0,60)||'Compra con tarjeta',fecha,last4,card,hora:fh&&fh[4]?fh[4]+':'+fh[5]:'',key:'al:'+last4+':'+fecha+':'+(fh&&fh[4]?fh[4]+fh[5]:'')+':'+monto});}
+    const debito=/d[eé]bito/i.test(t)&&!state.tarjetas.some(x=>x.ultimos&&x.ultimos===last4);
+    const card=debito?null:(state.tarjetas.find(x=>x.ultimos&&x.ultimos===last4)||(/promerica/i.test(t)?state.tarjetas.find(x=>/promerica/i.test(x.nombre+' '+(x.banco||''))):null)||null);
+    out.push({monto,moneda:/D[OÓ]LAR|USD|US\$|^\$/.test(cur)?'USD':'L',concepto:com.slice(0,60)||'Compra con tarjeta',fecha,last4,card,debito,hora:fh&&fh[4]?fh[4]+':'+fh[5]:'',key:'al:'+last4+':'+fecha+':'+(fh&&fh[4]?fh[4]+fh[5]:'')+':'+monto});}
   return out;}
 let alertList=[];
 $('kAlertBtn').addEventListener('click',()=>{$('kAlertBox').hidden=!$('kAlertBox').hidden;if(!$('kAlertBox').hidden)$('kAlert').focus();});
@@ -1373,8 +1375,8 @@ $('kAlert').addEventListener('input',()=>{const L=parseAlerts($('kAlert').value)
   if(!L.length){msg.style.color='var(--bad)';msg.textContent='No encontré una alerta de compra en ese texto. Copia el correo completo, desde "Numero de tarjeta" hasta "Fecha y Hora".';return}
   const dup=L.filter(a=>state.compras.some(c=>c.alerta===a.key)).length;
   if(L.length===1){const a=L[0];$('kMonto').value=a.monto;$('kMon').value=a.moneda;$('kConcepto').value=a.concepto;$('kFecha').value=a.fecha;fillMedios();
-    if(a.card)$('kMedio').value=a.card.id;fillDe(true);kPreview();
-    msg.style.color=dup?'var(--warn)':'var(--ok)';msg.textContent=(dup?'Ojo: esta compra ya está registrada. ':'Listo: ')+a.concepto+' · '+(a.moneda==='USD'?fU(a.monto):fL(a.monto))+' · '+dShort(parseISO(a.fecha))+(a.hora?' '+a.hora:'')+(a.card?' · '+a.card.nombre:' · tarjeta ****'+(a.last4||'?')+' no registrada')+'. Revisa y toca Guardar compra.';
+    $('kMedio').value=a.card?a.card.id:'';fillDe(true);kPreview();
+    msg.style.color=dup?'var(--warn)':'var(--ok)';msg.textContent=(dup?'Ojo: esta compra ya está registrada. ':'Listo: ')+a.concepto+' · '+(a.moneda==='USD'?fU(a.monto):fL(a.monto))+' · '+dShort(parseISO(a.fecha))+(a.hora?' '+a.hora:'')+(a.card?' · '+a.card.nombre:a.debito?' · débito ****'+a.last4:' · tarjeta ****'+(a.last4||'?')+' no registrada')+'. Revisa y toca Guardar compra.';
     $('kSave').dataset.alerta=a.key;return}
   msg.style.color='var(--ok)';msg.textContent='Encontré '+L.length+' compras'+(dup?' ('+dup+' ya registradas, se saltan)':'')+': '+L.map(a=>a.concepto.split(' ').slice(0,3).join(' ')+' '+fL0(a.moneda==='USD'?a.monto*tcV():a.monto)).join(' · ');
   $('kAlertMulti').hidden=false;});
