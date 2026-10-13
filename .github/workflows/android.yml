@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -48,3 +51,19 @@ jobs:
         with:
           name: Quincena-apk
           path: Quincena-*.apk
+
+      - name: Publicar en Releases (para bajarla desde el celular)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.0.${{ github.run_number }}" "Quincena-${{ github.run_number }}.apk" \
+            --title "Quincena 1.0.${{ github.run_number }}" \
+            --notes "Toca el archivo .apk de abajo para descargarlo e instalarlo."
+
+      - name: Guardar copia en la rama apk
+        run: |
+          mkdir out && cp Quincena-*.apk out/Quincena.apk
+          cd out
+          git init -q && git checkout -q -b apk
+          git add . && git -c user.name=ci -c user.email=ci@localhost commit -qm "APK ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" apk
