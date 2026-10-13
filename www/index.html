@@ -166,6 +166,10 @@ td small{color:var(--muted);font-size:12px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 6px 20px rgba(0,0,0,.25)}
 .item.compra{border-left-color:var(--accent)}
 .item.compra .pill{background:var(--accent-soft);color:var(--accent)}
+.item .iacts{grid-column:2/4;display:flex;gap:14px;align-items:center;justify-content:flex-end;font-size:13px}
+.item .iacts .rlink.del{color:var(--bad)}
+.item .iacts .rlink.armed{background:var(--bad);color:var(--surface);border-radius:6px;padding:2px 8px;text-decoration:none}
+.badge.warn{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
 .item .xbtn{border:1px solid var(--line);background:transparent;border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--muted);font-size:16px;line-height:1}
 .item .xbtn.armed{background:var(--bad);color:var(--surface);border-color:var(--bad);width:auto;padding:0 8px;font-size:12px}
 .wrap{padding-bottom:110px}
@@ -676,6 +680,7 @@ function startPeriod(){const d=parseISO(state.config.inicio);const a=state.confi
   const s0=d?periodFor(d):periodFor(today());return a&&pcmp(a,s0)<0?a:s0;}
 
 /* cadena: saldo inicial + sueldo − compromisos, quincena por quincena */
+function isDup(g){const n=x=>String(x.concepto||'').trim().toLowerCase();return state.gastos.some(x=>x.id!==g.id&&n(x)===n(g)&&!!x.ingreso===!!g.ingreso&&(x.tipo||'mensual')===(g.tipo||'mensual')&&(g.tipo==='unico'?x.fecha===g.fecha:+x.dia===+g.dia))}
 function compraT(c){const f=parseISO(c.fecha);const e=f?f.getTime()+864e5-1:Infinity;return Math.min(createdAt(c),e)}
 function createdAt(c){if(c.ts)return +c.ts;const n=parseInt(String(c.id||'').slice(1,9),36);return isFinite(n)&&n>1e12?n:(parseISO(c.fecha)||new Date(0)).getTime()+864e5-1;}
 function saldoHoy(){const cs=state.config.cuentas||[];return cs.reduce((a,x)=>a+(+x.saldo||0)*(x.moneda==='USD'?state.config.tc:1),0);}
@@ -786,7 +791,8 @@ function render(){
       const useTxt=o.used?' · usado '+fL0(o.used)+' de '+fL0(o.budget)+(o.used>o.budget?' (te pasaste '+fL0(o.used-o.budget)+')':''):'';
       return '<li class="item st-'+st+(o.ing?' ingreso':'')+'"><input type="checkbox" id="'+id+'" data-k="'+esc(o.key)+'"'+(state.pagos[o.key]?' checked':'')+(readOnly?' disabled':'')+'>'+
         '<label class="txt" for="'+id+'"><b>'+(o.ing?'+ ':'')+esc(o.g.concepto)+(o.g.ejemplo?'<span class="badge">ejemplo</span>':'')+'</b>'+refChip(o.g.ref)+'<small>'+(o.ing?'Entra el ':'Vence el ')+dShort(o.d)+useTxt+(o.ciclo?' · corte '+o.ciclo.C.getDate()+' '+MES[o.ciclo.C.getMonth()]+(o.ciclo.real?' (estado de cuenta)':' (estimado)'):'')+'</small></label>'+
-        '<div class="right"><span class="amt">'+fL(o.L)+(tc?'<small>'+fU(o.L/tc)+'</small>':'')+'</span><span class="pill">'+lab+'</span></div></li>';}).join('');
+        '<div class="right"><span class="amt">'+fL(o.L)+(tc?'<small>'+fU(o.L/tc)+'</small>':'')+'</span><span class="pill">'+lab+'</span></div>'+
+        (!readOnly&&state.gastos.some(x=>x.id===o.g.id)?'<div class="iacts">'+(isDup(o.g)?'<span class="badge warn">repetido</span>':'')+'<button type="button" class="rlink" data-edit="'+esc(o.g.id)+'">Editar</button><button type="button" class="rlink del" data-del="'+esc(o.g.id)+'">Borrar</button></div>':'')+'</li>';}).join('');
   }
 
   /* proyección: tabla + gráfica */
@@ -812,7 +818,7 @@ function render(){
       chk='<label for="'+id+'"><input type="checkbox" id="'+id+'" data-k="'+esc(o.key)+'"'+(state.pagos[o.key]?' checked':'')+(readOnly?' disabled':'')+'><span class="pill">'+lab+'</span></label>';}
     else if(isCard(g.medio))chk='<span class="next">Va en tu pago de '+esc(cardOf(g.medio).nombre)+'</span>';
     else{const n=nextOcc[g.id];chk='<span class="next">'+(n?'Próximo: '+pShort(n.p):'—')+'</span>';}
-    return '<tr class="'+rowCls+'"><td class="chk">'+chk+'</td><td>'+esc(g.concepto)+refChip(g.ref)+(g.ingreso?'<span class="badge in">ingreso</span>':'')+(g.ejemplo?'<span class="badge">ejemplo</span>':'')+'</td><td>'+when+'</td><td>'+(g.moneda==='USD'?fU(+g.monto):fL(+g.monto))+'</td><td><div class="acts">'+
+    return '<tr class="'+rowCls+'"><td class="chk">'+chk+'</td><td>'+esc(g.concepto)+refChip(g.ref)+(g.ingreso?'<span class="badge in">ingreso</span>':'')+(g.ejemplo?'<span class="badge">ejemplo</span>':'')+(isDup(g)?'<span class="badge warn">repetido</span>':'')+'</td><td>'+when+'</td><td>'+(g.moneda==='USD'?fU(+g.monto):fL(+g.monto))+'</td><td><div class="acts">'+
       (readOnly?'':'<button class="btn ghost small" data-edit="'+esc(g.id)+'">Editar</button><button class="btn danger small" data-del="'+esc(g.id)+'">Borrar</button>')+'</div></td></tr>';}).join('')
     :'<tr><td colspan="5" style="text-align:center;color:var(--muted);font-family:var(--f-body)">Sin compromisos todavía.</td></tr>';
 
@@ -982,7 +988,7 @@ document.addEventListener('click',e=>{
     if(gone&&gone.recibo&&ASSETS)ASSETS.delete(gone.recibo).catch(()=>{});return}
   const ed=e.target.closest('[data-edit]');if(ed){const g=state.gastos.find(x=>x.id===ed.dataset.edit);if(!g)return;editId=g.id;
     $('gConcepto').value=g.concepto;$('gMonto').value=g.monto;$('gMoneda').value=g.moneda||'L';$('gTipo').value=g.tipo||'mensual';$('gDia').value=g.dia||1;$('gFecha').value=g.fecha||'';$('gTermina').value=g.termina||'';$('gClase').value=g.ingreso?'ingreso':'gasto';fillMedios();$('gMedio').value=g.medio||'';$('gRef').value=g.ref||'';
-    $('gSubmit').textContent='Guardar cambios';$('gCancel').hidden=false;toggleFields();$('gConcepto').focus();return}
+    $('gSubmit').textContent='Guardar cambios';$('gCancel').hidden=false;toggleFields();$('gConcepto').scrollIntoView({behavior:'smooth',block:'center'});$('gConcepto').focus({preventScroll:true});return}
   const del=e.target.closest('[data-del]');if(del){
     if(!del.classList.contains('armed')){del.classList.add('armed');del.textContent='¿Seguro?';setTimeout(()=>{if(del.isConnected){del.classList.remove('armed');del.textContent='Borrar'}},3000);return}
     const id=del.dataset.del;state.gastos=state.gastos.filter(x=>x.id!==id);
