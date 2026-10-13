@@ -174,6 +174,11 @@ td small{color:var(--muted);font-size:12px}
 .lockbox input{font-family:var(--f-mono);font-size:32px;letter-spacing:.4em;text-align:center;width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
 .lockbox .btn{width:100%;padding:12px;font-size:16px}
 html.native .fab{bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+.clist summary{cursor:pointer;color:var(--accent);font-size:14px;font-weight:600}
+.clist .rec{margin-top:8px;max-height:none}
+.clist .rec li{grid-template-columns:minmax(0,1fr) auto auto;background:var(--soft)}
+.clist details{margin-top:8px}.clist details summary{font-weight:500;color:var(--muted)}
+.xs.armed{background:var(--bad);color:var(--surface);border-color:var(--bad)}
 .ref{display:flex;align-items:center;gap:6px;margin:2px 0;font-size:12px;color:var(--muted)}
 .ref code{font-family:var(--f-mono);font-size:13px;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:1px 6px;user-select:all}
 .ref button{border:1px solid var(--line);background:transparent;border-radius:4px;padding:1px 6px;font-size:11px;cursor:pointer;color:var(--accent)}
@@ -1177,7 +1182,7 @@ function cardStatus(t){const td=today(),ls=lastStmt(t);
   // próximo pago pendiente
   let nextPay=null;for(let i=-2;i<=1&&!nextPay;i++){const b=new Date(Cn.getFullYear(),Cn.getMonth()+i,1);const C=corteIn(t,b.getFullYear(),b.getMonth());const ci=cycleInfo(t,C);
     if(ci.P>=td&&!state.pagos['t_'+t.id+'@'+iso(C)]&&ci.L>0.005)nextPay=ci;}
-  return {ls,deuda,desde,nCompras:compras.length,Cn,nextPay,uso:t.limiteL?deuda/t.limiteL:0};}
+  return {ls,deuda,desde,nCompras:compras.length,compras,lastC,Cn,nextPay,uso:t.limiteL?deuda/t.limiteL:0};}
 function renderCards(){const box=$('tCards');
   if(!state.tarjetas.length){box.innerHTML='<p class="empty">Agrega tus tarjetas para que sus pagos entren solos en la proyección.</p>';return}
   const td=today();
@@ -1195,6 +1200,7 @@ function renderCards(){const box=$('tCards');
         '<div><span>Cargado desde el corte</span><b>'+fL0(st.desde)+'</b><small>'+st.nCompras+(st.nCompras===1?' compra registrada':' compras registradas')+'</small></div>'+
         '<div><span>Estimado por ciclo</span><b>'+fL0(+t.esperado||0)+'</b><small>se usa mientras no llegue el estado</small></div>'+
       '</div>'+
+      cardList(t,st)+
       '<p class="ctip">Lo que compres desde el '+(Cn.getDate()+1)+' '+MES[(new Date(Cn.getTime()+864e5)).getMonth()]+' entra al siguiente corte y lo pagas hasta el '+dShort(pagoFor(t,corteAfter(t,new Date(Cn.getTime()+864e5))))+'.</p>'+
       (ls?'<p class="stmtline">Último estado: corte '+dShort(parseISO(ls.corte))+' · contado <b>'+fL(+ls.contadoL||0)+'</b>'+((+ls.contadoUSD)?' + <b>'+fU(+ls.contadoUSD)+'</b>':'')+' · mínimo '+fL0(+ls.minimoL||0)+' · '+(state.pagos[lsKey]?'<span style="color:var(--ok)">pagado</span>':'vence el '+dShort(parseISO(ls.pagoMax)||pagoFor(t,parseISO(ls.corte))))+
         (Array.isArray(ls.cuotas)&&ls.cuotas.length?'<br>Cuotas: '+ls.cuotas.map(q=>esc(q.descripcion||'Cuota')+' '+fL0(+q.cuota||0)+' ('+q.numero+'/'+q.total+')').join(', '):'')+'</p>':'<p class="stmtline">Sin estado de cuenta todavía.</p>')+
@@ -1203,6 +1209,17 @@ function renderCards(){const box=$('tCards');
         tf(t,'limiteL','Límite (L)','number')+tf(t,'limiteUSD','Límite (US$)','number')+tf(t,'esperado','Estimado por ciclo (L)','number')+tf(t,'tasa','Tasa anual (%)','number')+
         '</div><div class="actions" style="margin-top:10px"><button type="button" class="btn danger small" data-tdel="'+esc(t.id)+'">Quitar tarjeta</button></div></details>')+
       '</article>';}).join('');}
+function cardList(t,st){const all=state.compras.filter(c=>c.medio===t.id).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(+b.ts||0)-(+a.ts||0));
+  if(!all.length)return '<p class="stmtline">Aún no hay compras registradas con esta tarjeta. Usa <b>+ Compra</b> o <b>Pegar alerta del banco</b>.</p>';
+  const cyc=all.filter(c=>{const d=parseISO(c.fecha);return d&&d>st.lastC;}),old=all.filter(c=>!cyc.includes(c));
+  const row=c=>{const d=parseISO(c.fecha);return '<li><span>'+esc(c.concepto)+'<small>'+(d?dShort(d):'')+(c.alerta?' · de alerta':'')+(c.origen==='estado'?' · del estado de cuenta':'')+'</small></span><span class="m">'+(c.moneda==='USD'?fU(+c.monto):fL(+c.monto))+'</span>'+(readOnly?'':'<button type="button" class="xs" data-cdel="'+esc(c.id)+'" aria-label="Quitar compra">×</button>')+'</li>';};
+  return '<details class="clist"'+(cyc.length?' open':'')+'><summary>Compras de este ciclo ('+cyc.length+') · '+fL0(cyc.reduce((a,c)=>a+cardL(c),0))+'</summary>'+
+    (cyc.length?'<ul class="rec">'+cyc.map(row).join('')+'</ul>':'<p class="hint">Sin compras desde el corte del '+dShort(st.lastC)+'.</p>')+
+    (old.length?'<details><summary>Ciclos anteriores ('+old.length+')</summary><ul class="rec">'+old.slice(0,60).map(row).join('')+'</ul></details>':'')+'</details>';}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-cdel]');if(!b)return;
+  if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent='?';setTimeout(()=>{if(b.isConnected){b.classList.remove('armed');b.textContent='×'}},3000);return}
+  const gone=state.compras.find(c=>c.id===b.dataset.cdel);state.compras=state.compras.filter(c=>c.id!==b.dataset.cdel);commit();
+  if(gone&&gone.recibo&&typeof ASSETS!=='undefined'&&ASSETS)ASSETS.delete(gone.recibo).catch(()=>{});});
 function tf(t,k,label,type){const id='tf_'+t.id+'_'+k;return '<div class="field"><label for="'+id+'">'+label+'</label><input id="'+id+'" type="'+type+'"'+(type==='number'?' step="0.01"':'')+' data-tf="'+esc(t.id)+'" data-f="'+k+'"'+(k==='ultimos'?' maxlength="19" inputmode="numeric" placeholder="Ej. 8390"':'')+' value="'+esc(t[k]??'')+'"></div>';}
 document.addEventListener('change',e=>{const el=e.target;if(!el.dataset||!el.dataset.tf)return;const t=cardOf(el.dataset.tf);if(!t)return;const k=el.dataset.f;
   t[k]=el.type==='number'?(+el.value||0):(k==='ultimos'?el.value.replace(/\D/g,'').slice(-4):el.value.trim());if(k==='ultimos')el.value=t[k];if(k==='corte')t.corte=Math.min(31,Math.max(1,t.corte||1));if(k==='diaPago')t.diaPago=Math.min(31,Math.max(1,t.diaPago||1));commit();});
