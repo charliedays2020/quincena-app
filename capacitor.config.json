@@ -1,0 +1,9 @@
+{
+  "appId": "com.carlday.quincena",
+  "appName": "Quincena",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "LocalNotifications": { "iconColor": "#1D5F7A" }
+  }
+}
