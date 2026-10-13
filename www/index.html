@@ -331,7 +331,7 @@ html.native .fab{bottom:calc(20px + env(safe-area-inset-bottom,0px))}
 
   <section class="panel fwd" aria-labelledby="fTitle">
     <div class="rowhead">
-      <div><h2 id="fTitle">¿Cuánto tendré?</h2><p class="hint">Remanente proyectado con todo lo que tienes registrado: sueldos, horas extra, bonos y compromisos.</p></div>
+      <div><h2 id="fTitle">¿Cuánto tendré?</h2><p class="hint">Remanente proyectado con todo lo que tienes registrado: sueldos, extras, bonos, compromisos y tarjetas.</p></div>
       <label class="sr" for="fMes" hidden>Mes</label><select id="fMes" aria-label="Mes a proyectar"></select>
     </div>
     <div class="fq" id="fQ"></div>
@@ -498,6 +498,13 @@ html.native .fab{bottom:calc(20px + env(safe-area-inset-bottom,0px))}
   <h2 id="shTitle">Registrar compra</h2>
   <label class="photobtn" for="kFoto" id="kFotoBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span id="kFotoLbl">Foto o captura del recibo</span></label>
   <input type="file" id="kFoto" accept="image/*" hidden>
+  <button type="button" class="photobtn" id="kAlertBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Pegar alerta del banco (correo)</button>
+  <div id="kAlertBox" hidden class="field">
+    <label for="kAlert">Copia el texto del correo de alerta y pégalo aquí. Puedes pegar varios a la vez.</label>
+    <textarea id="kAlert" rows="5" placeholder="Banco Promerica le informa que usted ha realizado el siguiente consumo: Numero de tarjeta: 4199-XXXX-XXXX-8390 … Monto: 254.00 …" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;resize:vertical"></textarea>
+    <p class="hint" id="kAlertMsg"></p>
+    <div class="actions" id="kAlertMulti" hidden><button type="button" class="btn small" id="kAlertAddAll">Agregar todas</button></div>
+  </div>
   <div class="kphoto" id="kPhoto" hidden><img id="kImg" alt="Recibo seleccionado"><span id="kFotoSt"></span><button type="button" class="btn ghost small" id="kFotoX">Quitar</button></div>
   <div class="amtrow">
     <input id="kMonto" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Monto">
@@ -1017,7 +1024,7 @@ function kPreview(){const amt=+$('kMonto').value||0,mon=$('kMon').value,tc=state
 function openSheet(){if(readOnly)return;$('sheet').reset();$('kFecha').value=iso(today());$('kMon').value='L';
   fillMedios();try{const m=localStorage.getItem('qaq-medio');if(m!==null&&[...$('kMedio').options].some(o=>o.value===m))$('kMedio').value=m;}catch(_){}
   $('kChips').innerHTML=QUICK.map(q=>'<button type="button" data-q="'+q+'" aria-pressed="false">'+q+'</button>').join('');
-  clearPhoto();fillDe(false);kPreview();$('sheetBg').hidden=false;$('sheet').hidden=false;setTimeout(()=>$('kMonto').focus(),50);}
+  clearPhoto();$('kAlertBox').hidden=true;$('kAlert').value='';$('kAlertMsg').textContent='';$('kAlertMulti').hidden=true;fillDe(false);kPreview();$('sheetBg').hidden=false;$('sheet').hidden=false;setTimeout(()=>$('kMonto').focus(),50);}
 function closeSheet(){if(readCtl)readCtl.abort();$('sheetBg').hidden=true;$('sheet').hidden=true;}
 $('fab').addEventListener('click',openSheet);$('sheetBg').addEventListener('click',closeSheet);$('kCancel').addEventListener('click',closeSheet);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('sheet').hidden)closeSheet();});
@@ -1032,6 +1039,7 @@ $('kFecha').addEventListener('change',()=>{fillDe(true);kPreview();});
 $('sheet').addEventListener('submit',async e=>{e.preventDefault();const amt=+$('kMonto').value||0;if(!(amt>0)||readOnly)return;
   const c={id:'k'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),fecha:$('kFecha').value||iso(today()),monto:amt,moneda:$('kMon').value,
     concepto:$('kConcepto').value.trim()||'Compra',de:$('kDe').value||'',medio:$('kMedio').value||'',ts:Date.now()};
+  if($('kSave').dataset.alerta&&!$('kAlertBox').hidden)c.alerta=$('kSave').dataset.alerta;delete $('kSave').dataset.alerta;
   try{localStorage.setItem('qaq-medio',c.medio)}catch(_){}
   let note='';
   if(kBlob&&ASSETS){const b=$('kSave');b.disabled=true;b.textContent='Guardando foto…';
@@ -1342,6 +1350,38 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if
   const ok=()=>{const t=b.textContent;b.textContent='Copiado';setTimeout(()=>{if(b.isConnected)b.textContent=t},1500);};
   try{navigator.clipboard.writeText(v).then(ok,()=>{selectCode(b);});}catch(_){selectCode(b);}},true);
 function selectCode(b){const c=b.parentElement.querySelector('code');if(!c)return;const r=document.createRange();r.selectNodeContents(c);const s=getSelection();s.removeAllRanges();s.addRange(r);toast('Código seleccionado: cópialo con Ctrl+C');}
+
+/* ---------- alertas de compra por correo ---------- */
+function parseAlerts(txt){const t=String(txt||'').replace(/\r/g,'');
+  const parts=t.split(/(?=N[uú]mero de tarjeta\s*:)/i).filter(p=>/Monto\s*:/i.test(p));
+  const out=[];
+  for(const p of parts){const g=re=>{const m=p.match(re);return m?m[1].trim():''};
+    const last4=(g(/N[uú]mero de tarjeta\s*:\s*([\dXx\-\s*]+)/i).replace(/\D/g,'')).slice(-4);
+    let com=g(/Comercio\s*:\s*([\s\S]*?)\n\s*(?:Pa[ií]s|Moneda|Monto)\s*:/i).replace(/\s+/g,' ');
+    const mon=g(/Moneda\s*:\s*([A-Za-zÁÉÍÓÚáéíóú$ ]+)/i).toUpperCase();
+    const monto=parseFloat(g(/Monto\s*:\s*([\d.,]+)/i).replace(/,/g,''));
+    const fh=p.match(/Fecha y Hora\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/i);
+    if(!(monto>0))continue;
+    const fecha=fh?fh[3]+'-'+String(fh[2]).padStart(2,'0')+'-'+String(fh[1]).padStart(2,'0'):iso(today());
+    const card=state.tarjetas.find(x=>x.ultimos&&x.ultimos===last4)||(/promerica/i.test(t)&&state.tarjetas.length?state.tarjetas.find(x=>/promerica/i.test(x.nombre+' '+(x.banco||''))):null)||null;
+    out.push({monto,moneda:/D[OÓ]LAR|USD|US\$/.test(mon)?'USD':'L',concepto:com.slice(0,60)||'Compra con tarjeta',fecha,last4,card,hora:fh&&fh[4]?fh[4]+':'+fh[5]:'',key:'al:'+last4+':'+fecha+':'+(fh&&fh[4]?fh[4]+fh[5]:'')+':'+monto});}
+  return out;}
+let alertList=[];
+$('kAlertBtn').addEventListener('click',()=>{$('kAlertBox').hidden=!$('kAlertBox').hidden;if(!$('kAlertBox').hidden)$('kAlert').focus();});
+$('kAlert').addEventListener('input',()=>{const L=parseAlerts($('kAlert').value);alertList=L;const msg=$('kAlertMsg');$('kAlertMulti').hidden=true;
+  if(!$('kAlert').value.trim()){msg.textContent='';return}
+  if(!L.length){msg.style.color='var(--bad)';msg.textContent='No encontré una alerta de compra en ese texto. Copia el correo completo, desde "Numero de tarjeta" hasta "Fecha y Hora".';return}
+  const dup=L.filter(a=>state.compras.some(c=>c.alerta===a.key)).length;
+  if(L.length===1){const a=L[0];$('kMonto').value=a.monto;$('kMon').value=a.moneda;$('kConcepto').value=a.concepto;$('kFecha').value=a.fecha;fillMedios();
+    if(a.card)$('kMedio').value=a.card.id;fillDe(true);kPreview();
+    msg.style.color=dup?'var(--warn)':'var(--ok)';msg.textContent=(dup?'Ojo: esta compra ya está registrada. ':'Listo: ')+a.concepto+' · '+(a.moneda==='USD'?fU(a.monto):fL(a.monto))+' · '+dShort(parseISO(a.fecha))+(a.hora?' '+a.hora:'')+(a.card?' · '+a.card.nombre:' · tarjeta ****'+(a.last4||'?')+' no registrada')+'. Revisa y toca Guardar compra.';
+    $('kSave').dataset.alerta=a.key;return}
+  msg.style.color='var(--ok)';msg.textContent='Encontré '+L.length+' compras'+(dup?' ('+dup+' ya registradas, se saltan)':'')+': '+L.map(a=>a.concepto.split(' ').slice(0,3).join(' ')+' '+fL0(a.moneda==='USD'?a.monto*tcV():a.monto)).join(' · ');
+  $('kAlertMulti').hidden=false;});
+$('kAlertAddAll').addEventListener('click',()=>{if(readOnly)return;let n=0;
+  for(const a of alertList){if(state.compras.some(c=>c.alerta===a.key))continue;
+    state.compras.push({id:'k'+Date.now().toString(36)+(n++)+Math.random().toString(36).slice(2,4),fecha:a.fecha,monto:a.monto,moneda:a.moneda,concepto:a.concepto,de:'',medio:a.card?a.card.id:'',ts:Date.now(),alerta:a.key});}
+  closeSheet();commit();toast(n?n+(n===1?' compra agregada':' compras agregadas')+' desde las alertas':'Esas compras ya estaban registradas');});
 
 /* ---------- guardado ---------- */
 function setStatus(t,cls){const s=$('status');s.textContent=t;s.className='status '+(cls||'');}
