@@ -292,6 +292,9 @@ html.native .fab{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 .hx{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;background:var(--soft);border-radius:8px;padding:10px 12px}
 .hx label{font-size:13px;font-weight:500}
 .hx small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+.hxin{display:flex;gap:6px}.hxin select{padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.hx2 input{width:110px;font-size:16px}
+.hxd summary{cursor:pointer;color:var(--accent);font-size:13px;margin-bottom:8px}
 .hx input{width:96px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-family:var(--f-mono);text-align:right}
 .breakdown{font-size:13px;color:var(--muted);margin-top:-8px}
 .breakdown b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
@@ -424,7 +427,9 @@ body[data-view="ajustes"] .gear{background:var(--accent);color:var(--surface);bo
       </div>
       <div class="qsum" id="qSum"></div>
       <p class="breakdown" id="qBreak"></p>
-      <div class="hx"><label for="qHoras">Sueldo recibido esta quincena (US$)<small id="qHorasHint"></small></label><input id="qHoras" type="number" step="0.01" min="0" inputmode="decimal"></div>
+      <div class="hx hx2"><label for="qExtra">Horas extras de esta quincena<small id="qExtraHint"></small></label><div class="hxin"><input id="qExtra" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"><select id="qExtraMon" aria-label="Moneda de las extras"><option value="USD">US$</option><option value="L">L</option></select></div></div>
+      <details class="hxd"><summary>¿Te pagaron distinto el sueldo base?</summary>
+      <div class="hx"><label for="qHoras">Sueldo base recibido (US$)<small id="qHorasHint"></small></label><input id="qHoras" type="number" step="0.01" min="0" inputmode="decimal"></div></details>
       <div class="progress" aria-hidden="true"><span id="qBar"></span></div>
       <p class="plabel" id="qProg"></p>
       <ul class="checklist" id="qList"></ul>
@@ -564,7 +569,7 @@ body[data-view="ajustes"] .gear{background:var(--accent);color:var(--surface);bo
       <div class="actions"><button type="button" class="btn ghost small" id="bExport">Descargar respaldo</button><label class="btn ghost small" for="bImport" id="bImportLbl">Importar respaldo</label><input type="file" id="bImport" accept="application/json,.json" hidden></div>
       <p class="hint" id="bMsg" hidden></p>
     </div>
-    <p class="hint tip">La proyección usa tu sueldo base; cuando te paguen, anota en el detalle de la quincena lo que realmente recibiste con extras. Usa la tasa de compra de tu banco: es lo que te pagan por cada dólar. Cada compromiso cae en el último sueldo recibido antes de su vencimiento; por ejemplo, un pago del día 5 se cubre con el sueldo de fin del mes anterior.</p>
+    <p class="hint tip">La proyección usa tu sueldo base; cuando te paguen horas extras, anótalas en la casilla de extras de esa quincena (pestaña Pagos). Usa la tasa de compra de tu banco: es lo que te pagan por cada dólar. Cada compromiso cae en el último sueldo recibido antes de su vencimiento; por ejemplo, un pago del día 5 se cubre con el sueldo de fin del mes anterior.</p>
   </section>
 
 </div>
@@ -647,7 +652,7 @@ const MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','di
 const MESL=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIA=['dom','lun','mar','mié','jue','vie','sáb'];
 const LSKEY='quincena-a-quincena-v1';
-const DEF={config:{sueldoUSD:0,tc:0,dia1:15,dia2:'ultimo',inicio:'',saldoInicial:0,colchon:0,horizonte:12,horaUSD:0,horasEst:0},gastos:[],pagos:{},horas:{},recibido:{},compras:[],tarjetas:[],estados:{}};
+const DEF={config:{sueldoUSD:0,tc:0,dia1:15,dia2:'ultimo',inicio:'',saldoInicial:0,colchon:0,horizonte:12,horaUSD:0,horasEst:0},gastos:[],pagos:{},horas:{},recibido:{},extrasQ:{},compras:[],tarjetas:[],estados:{}};
 let state=clone(DEF), ref=null, mode='loading', loaded=false;
 let openMore=new Set();
 let selKey=null, editId=null, yearSel=new Date().getFullYear();
@@ -663,6 +668,8 @@ function norm(d){
     s.pagos=(d.pagos&&typeof d.pagos==='object')?d.pagos:{};
     s.horas=(d.horas&&typeof d.horas==='object')?d.horas:{};
     s.recibido=(d.recibido&&typeof d.recibido==='object')?d.recibido:{};
+    s.extrasQ=(d.extrasQ&&typeof d.extrasQ==='object')?d.extrasQ:{};
+    {const base=+(s.config&&s.config.sueldoUSD)||0;if(base>0)for(const k of Object.keys(s.recibido)){const v=+s.recibido[k];if(!(k in s.extrasQ)&&v>base+0.005){s.extrasQ[k]={monto:Math.round((v-base)*100)/100,moneda:'USD'};delete s.recibido[k];}}}
     s.compras=Array.isArray(d.compras)?d.compras:[];
     s.tarjetas=Array.isArray(d.tarjetas)?d.tarjetas:[];
     s.estados=(d.estados&&typeof d.estados==='object')?d.estados:{};
@@ -782,8 +789,9 @@ function chain(simx){const A=anchor();
     const extra=oc.filter(o=>o.ing).reduce((a,o)=>a+o.L,0);
     const out=oc.filter(o=>!o.ing).reduce((a,o)=>a+o.L,0);
     const k=pkey(p),rec=state.recibido[k],hasReal=rec!==undefined&&rec!==null&&rec!=='';
-    const recU=hasReal?+rec:c.sueldoUSD,extraU=Math.max(0,recU-c.sueldoUSD),horas=extraU;
-    const sueldoAdj=hasReal?Math.min(recU,c.sueldoUSD)*c.tc:sueldo;const horasL=extraU*c.tc;sueldo=sueldoAdj;
+    const recU=hasReal?+rec:c.sueldoUSD,xq=state.extrasQ[k];
+    const horasL=xq?(+xq.monto||0)*(xq.moneda==='L'?1:c.tc):0,extraU=c.tc?horasL/c.tc:0,horas=extraU;
+    sueldo=recU*c.tc;
     let prevRem=rem;rem=rem+sueldo+horasL+extra-out;
     let anc=null;
     if(A&&pcmp(p,A.p)===0){let pin=0,pout=0;
@@ -864,7 +872,10 @@ function render(){
   const qh=$('qHoras');if(document.activeElement!==qh)qh.value=sel.hasReal?String(state.recibido[sel.key]):'';
   qh.placeholder=String(c.sueldoUSD||0);qh.disabled=readOnly;
   {const rv=sel.hasReal?+state.recibido[sel.key]:null,dif=rv===null?0:rv-c.sueldoUSD;
-   $('qHorasHint').textContent=rv===null?'Escribe lo que te cayó, con extras. Vacío = sueldo base de '+fU(c.sueldoUSD||0)+'.':(dif>0.005?'Base '+fU(c.sueldoUSD)+' + extras '+fU(dif):dif<-0.005?'Recibiste '+fU(-dif)+' menos que tu sueldo base':'Igual a tu sueldo base');}
+   $('qHorasHint').textContent=rv===null?'Vacío = tu sueldo base de '+fU(c.sueldoUSD||0)+'. Solo si hubo deducción u otro cambio.':(dif<-0.005?fU(-dif)+' menos que tu sueldo base':dif>0.005?fU(dif)+' más que tu sueldo base':'Igual a tu sueldo base');
+   if(rv!==null)document.querySelector('.hxd').open=true;
+   const xq=state.extrasQ[sel.key],qe=$('qExtra');if(document.activeElement!==qe)qe.value=xq?String(xq.monto):'';$('qExtraMon').value=xq?(xq.moneda||'USD'):($('qExtraMon').value||'USD');
+   $('qExtraHint').textContent=xq&&+xq.monto?'Se suman a tu sueldo: '+(xq.moneda==='L'?fL(+xq.monto)+(tc?' ('+fU(+xq.monto/tc)+')':''):fU(+xq.monto)+(tc?' ('+fL(+xq.monto*tc)+')':'')):'Escribe lo que te pagaron de extras. Vacío = sin extras.';}
   const gastosSel=sel.oc.filter(o=>!o.ing&&!o.compra),paid=gastosSel.filter(o=>isPaid(o));
   const paidL=paid.reduce((a,o)=>a+o.L,0),planL=gastosSel.reduce((a,o)=>a+o.L,0);
   const compL=sel.oc.filter(o=>o.compra).reduce((a,o)=>a+(o.shown??o.L),0);
@@ -1050,6 +1061,8 @@ function toggleFields(){const t=$('gTipo').value,ing=$('gClase').value==='ingres
   $('gDiaLbl').textContent=ing?'Día que entra':'Día que vence';$('gConcepto').placeholder=ing?'Ej. Bonificación de fin de año, aguinaldo':'Ej. Alquiler, préstamo, ENEE';$('fDia').hidden=t!=='mensual';$('fFecha').hidden=t!=='unico';$('fTermina').hidden=t==='unico';}
 $('gTipo').addEventListener('change',toggleFields);
 $('gClase').addEventListener('change',()=>{if($('gClase').value==='ingreso'&&!editId){$('gMoneda').value='USD';$('gTipo').value='unico';}toggleFields();});
+const saveExtra=()=>{const v=$('qExtra').value.trim();if(v===''||!(+v>0))delete state.extrasQ[selKey];else state.extrasQ[selKey]={monto:Math.round((+v)*100)/100,moneda:$('qExtraMon').value};commit();};
+$('qExtra').addEventListener('change',saveExtra);$('qExtraMon').addEventListener('change',()=>{if($('qExtra').value.trim())saveExtra();});
 $('qHoras').addEventListener('change',e=>{const v=e.target.value.trim();if(v==='')delete state.recibido[selKey];else state.recibido[selKey]=Math.max(0,+v||0);commit();});
 $('fMes').addEventListener('change',e=>{const [y,m]=e.target.value.split('-').map(Number);target={y,m};render();});
 for(const id of ['sMonto','sFecha','sConcepto'])$(id).addEventListener('input',()=>{const {rows,cur}=chain();renderSim(rows,cur);});
@@ -1211,7 +1224,7 @@ function renderOnb(){const c=state.config;
   const steps=[
     {done:(c.cuentas||[]).length>0,t:'Saldo de hoy',d:'Lo que tienes ahora en tus cuentas de banco, en L o US$. No van facturas aquí.',go:'cTitle',b:'Ir a saldos'},
     {done:c.sueldoUSD>0&&c.tc>0,t:'Sueldo y tipo de cambio',d:'Tu sueldo por quincena en US$ y la tasa de compra de tu banco.',go:'cSueldo',b:'Ir a ajustes'},
-    {done:Object.keys(state.recibido||{}).length>0||state.gastos.some(g=>g.ingreso&&!g.ejemplo),t:'Extras y bonificaciones',d:'Cuando te paguen, anota en la quincena el sueldo que te cayó con extras. Los bonos van con su fecha.',go:'qHoras',b:'Anotar sueldo recibido',b2:'Agregar bonificación'},
+    {done:Object.keys(state.recibido||{}).length>0||Object.keys(state.extrasQ||{}).length>0||state.gastos.some(g=>g.ingreso&&!g.ejemplo),t:'Extras y bonificaciones',d:'Cuando te paguen, anota en la quincena el sueldo que te cayó con extras. Los bonos van con su fecha.',go:'qExtra',b:'Anotar horas extras',b2:'Agregar bonificación'},
     {done:state.gastos.some(g=>!g.ejemplo&&!g.ingreso),t:'Compromisos fijos',d:'Alquiler, préstamos, servicios, presupuestos de súper o gasolina.',go:'gTitle',b:'Ir a compromisos'},
     {done:state.tarjetas.length>0&&state.tarjetas.every(t=>(state.estados[t.id]||[]).length),t:'Tarjetas',d:'Revisa fechas y límites, y sube el estado de cuenta de cada una.',go:'tTitle',b:'Ir a tarjetas'}];
   const all=steps.every(x=>x.done);$('onb').hidden=all||onbHidden||readOnly;
