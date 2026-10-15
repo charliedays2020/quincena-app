@@ -875,7 +875,8 @@ function render(){
    $('qHorasHint').textContent=rv===null?'Vacío = tu sueldo base de '+fU(c.sueldoUSD||0)+'. Solo si hubo deducción u otro cambio.':(dif<-0.005?fU(-dif)+' menos que tu sueldo base':dif>0.005?fU(dif)+' más que tu sueldo base':'Igual a tu sueldo base');
    if(rv!==null)document.querySelector('.hxd').open=true;
    const xq=state.extrasQ[sel.key],qe=$('qExtra');if(document.activeElement!==qe)qe.value=xq?String(xq.monto):'';$('qExtraMon').value=xq?(xq.moneda||'USD'):($('qExtraMon').value||'USD');
-   $('qExtraHint').textContent=xq&&+xq.monto?'Se suman a tu sueldo: '+(xq.moneda==='L'?fL(+xq.monto)+(tc?' ('+fU(+xq.monto/tc)+')':''):fU(+xq.monto)+(tc?' ('+fL(+xq.monto*tc)+')':'')):'Escribe lo que te pagaron de extras. Vacío = sin extras.';}
+   const fut=pcmp(sel.p,cur)>0;$('qExtra').labels[0].firstChild.textContent=fut?'Horas extras esperadas (estimado)':'Horas extras de esta quincena';
+   $('qExtraHint').textContent=xq&&+xq.monto?(fut?'Estimado que entra a tu proyección: ':'Se suman a tu sueldo: ')+(xq.moneda==='L'?fL(+xq.monto)+(tc?' ('+fU(+xq.monto/tc)+')':''):fU(+xq.monto)+(tc?' ('+fL(+xq.monto*tc)+')':'')):(fut?'Si esperas extras en esta quincena, escribe un estimado; cuando te paguen, corrígelo.':'Escribe lo que te pagaron de extras. Vacío = sin extras.');}
   const gastosSel=sel.oc.filter(o=>!o.ing&&!o.compra),paid=gastosSel.filter(o=>isPaid(o));
   const paidL=paid.reduce((a,o)=>a+o.L,0),planL=gastosSel.reduce((a,o)=>a+o.L,0);
   const compL=sel.oc.filter(o=>o.compra).reduce((a,o)=>a+(o.shown??o.L),0);
