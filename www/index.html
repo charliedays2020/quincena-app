@@ -1439,18 +1439,21 @@ function parseStmtText(lines,hint){
     const ds=lines.filter(l=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(l.trim())).map(dt);
     if(ds.length>=3){d.corte=ds[1];d.pagoMax=ds[2];const a=new Date(ds[0]+'T12:00:00');a.setDate(a.getDate()+1);d.desde=a.toISOString().slice(0,10)}
     d.tasa=n(g(/([\d]+\.\d+)%/));
-    let tit='';
+    let tit='',exS=0;{const iD=lines.findIndex(l=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(l.trim()));const nx=lines[iD+1];if(iD>=0&&nx&&/^[\d,]+\.\d{2}$/.test(nx.trim()))exS=n(nx);}
     for(const ln of lines){const th=ln.match(/^-\s*(.+?)\s*-\s*\d{4}-\d{2}X{2}-X{4}-\d{4}/);if(th){tit=th[1].trim();continue}
       const m=ln.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*\|\s*\d+\s*\|\s*(.+)$/);if(!m)continue;
       const parts=m[2].split(/\s*\|\s*/);if(parts.length<3)continue;const usd=parts.pop(),lps=parts.pop();
-      const desc=parts.join(' ').trim();const ab=/-$/.test(lps.trim())||/-$/.test(usd.trim())||/ABONO|PAGO/i.test(desc);
+      let desc=parts.join(' ').trim();if(!n(lps)&&!n(usd))continue;const ab=/-$/.test(lps.trim())||/-$/.test(usd.trim())||/ABONO|PAGO|REVERSI/i.test(desc);
+      const q=desc.match(/(\d+)\/(\d+)/);if(q&&!ab&&/PLAN|CUOTA|EXTRAF/i.test(desc)){d.cuotas.push({descripcion:desc.replace(/\s*CAT:.*$/,'').replace(/\s*\d+\/\d+/,'').slice(0,60),cuota:n(lps),numero:+q[1],total:+q[2],saldo:exS});desc='Cuota '+q[1]+'/'+q[2]+' '+desc;}
       d.movimientos.push({fecha:dt(m[1]),descripcion:desc,montoL:n(lps),montoUSD:n(usd),tipo:ab?'abono':'cargo',titular:tit});}}
+  {const mv=d.movimientos;for(const r of mv.filter(x=>x.tipo==='abono'&&/REVERSI|ANULACI|DEVOLUCI/i.test(x.descripcion))){const k=mv.findIndex(x=>x.tipo==='cargo'&&!x._rv&&Math.abs(x.montoL-r.montoL)<0.01&&Math.abs(x.montoUSD-r.montoUSD)<0.01);if(k>=0){mv[k]._rv=1;r._rv=1}}
+   d.movimientos=mv.filter(x=>!x._rv);}
   return d;}
 
 const num=v=>{const n=typeof v==='string'?+v.replace(/,/g,''):+v;return isFinite(n)?n:0;};
 function showReview(t,d){
   const movs=(Array.isArray(d.movimientos)?d.movimientos:[]).map((m,i)=>({i,fecha:String(m.fecha||''),desc:String(m.descripcion||'').slice(0,80),L:num(m.montoL),U:num(m.montoUSD),tipo:m.tipo==='abono'?'abono':'cargo',tit:String(m.titular||'')}));
-  const cargos=movs.filter(m=>m.tipo==='cargo'&&!/cuota/i.test(m.desc));
+  const cargos=movs.filter(m=>m.tipo==='cargo'&&!/cuota|EXTRAF|DESEMB|INTER[EÉ]S|COMISI/i.test(m.desc));
   const corte=parseISO(d.corte),desde=parseISO(d.desde)||(corte?new Date(prevCorte(t,corte).getTime()+864e5):null);
   const mine=state.compras.filter(c=>c.medio===t.id&&(x=>x&&corte&&x<=new Date(corte.getTime()+864e5)&&(!desde||x>=new Date(desde.getTime()-3*864e5)))(parseISO(c.fecha)));
   const used=new Set();
