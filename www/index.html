@@ -1311,9 +1311,10 @@ function renderCards(){const box=$('tCards');
       '<div class="cline"><span>Próximo pago</span><div><b>'+(np?fL0(np.L):'—')+'</b><small>'+(np?dShort(np.P)+(np.real?' · estado de cuenta':' · estimado'):'Nada pendiente')+'</small></div></div>'+
       '<div class="cline"><span>Compras desde el corte</span><div><b>'+fL0(st.desde)+'</b><small>corte '+Cn.getDate()+' '+MES[Cn.getMonth()]+' · '+(days===0?'hoy':'en '+days+(days===1?' día':' días'))+'</small></div></div>'+
       '<div class="cbtns"><button type="button" class="btn" data-vc="'+esc(t.id)+'">Ver compras ('+st.nCompras+')</button><button type="button" class="btn ghost" data-more="'+esc(t.id)+'" aria-expanded="'+openMore.has(t.id)+'">'+(openMore.has(t.id)?'Menos':'Más')+'</button></div>'+
-      (readOnly?'':'<button type="button" class="btn ghost stbtn" '+(imgOK?'data-up':'data-man')+'="'+esc(t.id)+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>'+(imgOK?'Subir estado de cuenta (foto o PDF)':'Anotar estado de cuenta')+'</button>')+
+      (readOnly?'':'<button type="button" class="btn ghost stbtn" data-up="'+esc(t.id)+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>'+'Subir estado de cuenta (PDF)</button>')+
       '<div class="cmore"'+(openMore.has(t.id)?'':' hidden')+'>'+
       '<div class="cgrid"><div><span>Estimado por ciclo</span><b>'+fL0(+t.esperado||0)+'</b><small>se usa mientras no llegue el estado</small></div><div><span>Pago del próximo corte</span><b>'+dShort(Pn)+'</b><small>de lo que compres hasta el '+Cn.getDate()+' '+MES[Cn.getMonth()]+'</small></div></div>'+
+      (readOnly?'':'<div class="actions"><button type="button" class="btn ghost small" data-man="'+esc(t.id)+'">Anotar estado de cuenta a mano</button></div>')+
       '<p class="ctip">Lo que compres desde el '+(Cn.getDate()+1)+' '+MES[(new Date(Cn.getTime()+864e5)).getMonth()]+' entra al siguiente corte y lo pagas hasta el '+dShort(pagoFor(t,corteAfter(t,new Date(Cn.getTime()+864e5))))+'.</p>'+
       (ls?'<p class="stmtline">Último estado: corte '+dShort(parseISO(ls.corte))+' · contado <b>'+fL(+ls.contadoL||0)+'</b>'+((+ls.contadoUSD)?' + <b>'+fU(+ls.contadoUSD)+'</b>':'')+' · mínimo '+fL0(+ls.minimoL||0)+' · '+(state.pagos[lsKey]?'<span style="color:var(--ok)">pagado</span>':'vence el '+dShort(parseISO(ls.pagoMax)||pagoFor(t,parseISO(ls.corte))))+
         (Array.isArray(ls.cuotas)&&ls.cuotas.length?'<br>Cuotas: '+ls.cuotas.map(q=>esc(q.descripcion||'Cuota')+' '+fL0(+q.cuota||0)+' ('+q.numero+'/'+q.total+')').join(', '):'')+'</p>':'<p class="stmtline">Sin estado de cuenta todavía.</p>')+
@@ -1365,7 +1366,14 @@ $('eBg').addEventListener('click',closeE);
 document.addEventListener('click',e=>{const b=e.target.closest('[data-up]');if(!b)return;eCard=b.dataset.up;$('eFile').value='';$('eFile').click();});
 $('eFile').addEventListener('change',async e=>{const files=[...(e.target.files||[])];if(!files.length)return;const t=cardOf(eCard);if(!t)return;
   openE();$('eTitle').textContent='Estado de cuenta · '+t.nombre;
-  if(!SAMPLE||!imgOK){$('eStatus').innerHTML='Para leer el estado de cuenta, esta página necesita permiso para usar Claude con imágenes. Ábrela desde Claude y acepta el permiso cuando lo pida.';return}
+  const manB='<div class="actions" style="margin-top:8px"><button type="button" class="btn ghost small" data-man="'+esc(t.id)+'">Anotar a mano</button></div>';
+  const pdfs=files.filter(f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name));
+  if(pdfs.length){try{$('eStatus').innerHTML='<span class="spin"></span>Leyendo el PDF…';const L=await pdfLines(pdfs[0]);const d=parseStmtText(L);
+      if(d.corte&&(d.contadoL||d.contadoUSD||d.saldoL||d.movimientos.length)){$('eStatus').innerHTML='Leí el PDF de '+esc(d.banco||'tu banco')+'. Revisa los datos y toca Guardar.';eData=d;showReview(t,d);return}}
+    catch(err){if(err&&err.code==='pw'){$('eStatus').textContent='Sin la contraseña no puedo abrir el PDF.';return}
+      if(err&&err.message==='script'){$('eStatus').innerHTML='Necesito internet la primera vez para abrir PDFs. Conéctate e intenta de nuevo.'+manB;return}}
+    if(!SAMPLE||!imgOK){$('eStatus').innerHTML='No reconocí este PDF como un estado de cuenta de Promerica o Atlántida. Revisa que sea el PDF que manda el banco (no una foto o captura).'+manB;return}}
+  else if(!SAMPLE||!imgOK){$('eStatus').innerHTML='Aquí solo puedo leer el <b>PDF</b> que manda el banco. Si solo tienes foto, mándamela por el chat de Claude o anótalo a mano.'+manB;return}
   let lim=5;try{const l=await SAMPLE.limits();if(l&&l.images&&l.images.maxCount)lim=Math.min(6,l.images.maxCount);}catch(_){}
   let imgs=[];
   try{$('eStatus').innerHTML='<span class="spin"></span>Preparando las páginas…';
@@ -1393,6 +1401,52 @@ $('eFile').addEventListener('change',async e=>{const files=[...(e.target.files||
     else if(c==='image_rejected')$('eStatus').textContent='Alguna página no se pudo procesar. Prueba con capturas de pantalla.';
     else $('eStatus').textContent='No pude leer el estado de cuenta. Intenta de nuevo o súbelo como capturas de pantalla.';}
 });
+async function loadPdfjs(){if(window.pdfjsLib)return;
+  if(document.documentElement.classList.contains('native')){try{await loadScript('pdfjs/pdf.min.js');await loadScript('pdfjs/pdf.worker.min.js');return}catch(_){}}
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');}
+async function pdfLines(file){
+  await loadPdfjs();
+  const lib=window.pdfjsLib;const buf=new Uint8Array(await file.arrayBuffer());
+  let doc;try{doc=await lib.getDocument({data:buf.slice(0),isEvalSupported:false}).promise;}
+  catch(err){if(err&&err.name==='PasswordException'){const pw=await askPassword();if(!pw)throw {code:'pw'};doc=await lib.getDocument({data:buf.slice(0),password:pw,isEvalSupported:false}).promise;}else throw err;}
+  const out=[];for(let i=1;i<=Math.min(doc.numPages,8);i++){const pg=await doc.getPage(i);const tc=await pg.getTextContent();const rows=[];
+    for(const it of tc.items){if(!it.str||!it.str.trim())continue;const x=it.transform[4],y=it.transform[5];let rw=rows.find(q=>Math.abs(q.y-y)<3);if(!rw){rw={y,its:[]};rows.push(rw)}rw.its.push({x,s:it.str,w:it.width||0});}
+    rows.sort((a,b)=>b.y-a.y);for(const rw of rows){rw.its.sort((a,b)=>a.x-b.x);let t='',ex=null;for(const it of rw.its){if(ex!==null&&it.x-ex>15)t+='  |  ';else if(ex!==null)t+=' ';t+=it.s.trim();ex=it.x+it.w;}out.push(t)}}
+  return out;}
+function parseStmtText(lines,hint){
+  const T=lines.join('\n');const n=v=>{if(v==null)return 0;const x=+String(v).replace(/,/g,'').replace(/-$/,'');return isFinite(x)?x:0};
+  const dt=v=>{const m=String(v||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):null};
+  const g=(re,i=1)=>{const m=T.match(re);return m?m[i]:null};
+  const isProm=/promerica/i.test(T)||/Fecha de corte\s+\d/.test(T);
+  const isAtl=!isProm&&/L\.[\d,.]+\s*\/\s*\$\s*[\d,.]+\s*\|\s*L\.[\d,.]+/.test(T);
+  const d={banco:'',corte:null,desde:null,pagoMax:null,contadoL:0,contadoUSD:0,minimoL:0,minimoUSD:0,saldoL:0,saldoUSD:0,limiteL:0,limiteUSD:0,disponibleL:0,disponibleUSD:0,tasa:0,cuotas:[],movimientos:[]};
+  const NUM='(-?[\\d,]+\\.\\d{2})';
+  if(isProm){d.banco='Banco Promerica';
+    d.corte=dt(g(/Fecha de corte\s+(\d{1,2}\/\d{1,2}\/\d{4})/));d.desde=dt(g(/Periodo del\s+(\d{1,2}\/\d{1,2}\/\d{4})/));d.pagoMax=dt(g(/Fecha m[aá]x\.? de pago\s+(\d{1,2}\/\d{1,2}\/\d{4})/i));
+    const two=(lab)=>{const m=T.match(new RegExp(lab+'\\s*\\|\\s*'+NUM+'\\s*\\|\\s*'+NUM));return m?[n(m[1]),n(m[2])]:[0,0]};
+    [d.contadoL,d.contadoUSD]=two('Pago de contado');[d.minimoL,d.minimoUSD]=two('Pago m[ií]nimo');[d.limiteL,d.limiteUSD]=two('L[ií]mite de cr[eé]dito');
+    [d.disponibleL,d.disponibleUSD]=two('Cr[eé]dito disponible');[d.saldoL,d.saldoUSD]=two('= Saldo total');d.tasa=n(g(/Tasa de inter[eé]s anual\s*\|\s*([\d.]+)%/i));
+    let cur='L',tit='';
+    for(const ln of lines){if(/^LEMPIRAS$/i.test(ln.trim()))cur='L';else if(/^D[OÓ]LARES$/i.test(ln.trim()))cur='USD';
+      const th=ln.match(/^X{4,}\d{4}\s+(.+)$/);if(th)tit=th[1].trim();
+      const m=ln.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*\|\s*\d{1,2}:\d{2}\s*[AP]M\s*\|\s*(.+?)\s*\|\s*([\d,]+\.\d{2})$/i);if(!m)continue;
+      const desc=m[2].replace(/\s*\|\s*/g,' ').replace(/\s+,/g,',').trim();const amt=n(m[3]);const ab=/PAGO DE TARJETA|ABONO|CR[EÉ]DITO|DEVOLUCI/i.test(desc);
+      d.movimientos.push({fecha:dt(m[1]),descripcion:desc,montoL:cur==='L'?amt:0,montoUSD:cur==='USD'?amt:0,tipo:ab?'abono':'cargo',titular:tit});
+      const q=desc.match(/(\d+)\s*Cuota\s*(\d+)\/(\d+)\s+(.+)/i);if(q)d.cuotas.push({descripcion:q[4].replace(/\s+\d{5,}$/,'').slice(0,60),cuota:amt,numero:+q[2],total:+q[3],saldo:n(g(/^Saldo:\s*\|\s*([\d,]+\.\d{2})/m))});}}
+  else if(isAtl){d.banco='Banco Atlántida';
+    const lp=[...T.matchAll(/^L\s*([\d,]+\.\d{2})\s*\|\s*\$\s*([\d,]+\.\d{2})$/gm)];if(lp[0]){d.limiteL=n(lp[0][1]);d.limiteUSD=n(lp[0][2])}if(lp[1]){d.disponibleL=n(lp[1][1]);d.disponibleUSD=n(lp[1][2])}
+    const mc=T.match(/L\.([\d,]+\.\d{2})\s*\/\s*\$\s*([\d,]+\.\d{2})\s*\|\s*L\.([\d,]+\.\d{2})\s*\/\s*\$\s*([\d,]+\.\d{2})/);if(mc){d.minimoL=n(mc[1]);d.minimoUSD=n(mc[2]);d.contadoL=n(mc[3]);d.contadoUSD=n(mc[4]);d.saldoL=d.contadoL;d.saldoUSD=d.contadoUSD}
+    const ds=lines.filter(l=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(l.trim())).map(dt);
+    if(ds.length>=3){d.corte=ds[1];d.pagoMax=ds[2];const a=new Date(ds[0]+'T12:00:00');a.setDate(a.getDate()+1);d.desde=a.toISOString().slice(0,10)}
+    d.tasa=n(g(/([\d]+\.\d+)%/));
+    let tit='';
+    for(const ln of lines){const th=ln.match(/^-\s*(.+?)\s*-\s*\d{4}-\d{2}X{2}-X{4}-\d{4}/);if(th){tit=th[1].trim();continue}
+      const m=ln.match(/^(\d{1,2}\/\d{1,2}\/\d{4})\s*\|\s*\d+\s*\|\s*(.+)$/);if(!m)continue;
+      const parts=m[2].split(/\s*\|\s*/);if(parts.length<3)continue;const usd=parts.pop(),lps=parts.pop();
+      const desc=parts.join(' ').trim();const ab=/-$/.test(lps.trim())||/-$/.test(usd.trim())||/ABONO|PAGO/i.test(desc);
+      d.movimientos.push({fecha:dt(m[1]),descripcion:desc,montoL:n(lps),montoUSD:n(usd),tipo:ab?'abono':'cargo',titular:tit});}}
+  return d;}
+
 const num=v=>{const n=typeof v==='string'?+v.replace(/,/g,''):+v;return isFinite(n)?n:0;};
 function showReview(t,d){
   const movs=(Array.isArray(d.movimientos)?d.movimientos:[]).map((m,i)=>({i,fecha:String(m.fecha||''),desc:String(m.descripcion||'').slice(0,80),L:num(m.montoL),U:num(m.montoUSD),tipo:m.tipo==='abono'?'abono':'cargo',tit:String(m.titular||'')}));
