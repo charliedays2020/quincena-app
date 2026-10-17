@@ -379,6 +379,9 @@ body[data-view="ajustes"] .gear{background:var(--accent);color:var(--surface);bo
 .cmpsum{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;font-size:14px;color:var(--muted)}
 .cmpsum b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
 @media (max-width:560px){.top>div:first-child{display:none}.clockbox{align-items:flex-start;text-align:left}.top{justify-content:space-between}.clock{font-size:30px}.cdate{font-size:13px}.status{font-size:12px}}
+.stbtn{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px}.stbtn svg{width:18px;height:18px}
+.mform{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.mform .full{grid-column:1/-1}
+.mform textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:13px var(--f-mono);resize:vertical}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -1308,12 +1311,12 @@ function renderCards(){const box=$('tCards');
       '<div class="cline"><span>Próximo pago</span><div><b>'+(np?fL0(np.L):'—')+'</b><small>'+(np?dShort(np.P)+(np.real?' · estado de cuenta':' · estimado'):'Nada pendiente')+'</small></div></div>'+
       '<div class="cline"><span>Compras desde el corte</span><div><b>'+fL0(st.desde)+'</b><small>corte '+Cn.getDate()+' '+MES[Cn.getMonth()]+' · '+(days===0?'hoy':'en '+days+(days===1?' día':' días'))+'</small></div></div>'+
       '<div class="cbtns"><button type="button" class="btn" data-vc="'+esc(t.id)+'">Ver compras ('+st.nCompras+')</button><button type="button" class="btn ghost" data-more="'+esc(t.id)+'" aria-expanded="'+openMore.has(t.id)+'">'+(openMore.has(t.id)?'Menos':'Más')+'</button></div>'+
+      (readOnly?'':'<button type="button" class="btn ghost stbtn" '+(imgOK?'data-up':'data-man')+'="'+esc(t.id)+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>'+(imgOK?'Subir estado de cuenta (foto o PDF)':'Anotar estado de cuenta')+'</button>')+
       '<div class="cmore"'+(openMore.has(t.id)?'':' hidden')+'>'+
       '<div class="cgrid"><div><span>Estimado por ciclo</span><b>'+fL0(+t.esperado||0)+'</b><small>se usa mientras no llegue el estado</small></div><div><span>Pago del próximo corte</span><b>'+dShort(Pn)+'</b><small>de lo que compres hasta el '+Cn.getDate()+' '+MES[Cn.getMonth()]+'</small></div></div>'+
       '<p class="ctip">Lo que compres desde el '+(Cn.getDate()+1)+' '+MES[(new Date(Cn.getTime()+864e5)).getMonth()]+' entra al siguiente corte y lo pagas hasta el '+dShort(pagoFor(t,corteAfter(t,new Date(Cn.getTime()+864e5))))+'.</p>'+
       (ls?'<p class="stmtline">Último estado: corte '+dShort(parseISO(ls.corte))+' · contado <b>'+fL(+ls.contadoL||0)+'</b>'+((+ls.contadoUSD)?' + <b>'+fU(+ls.contadoUSD)+'</b>':'')+' · mínimo '+fL0(+ls.minimoL||0)+' · '+(state.pagos[lsKey]?'<span style="color:var(--ok)">pagado</span>':'vence el '+dShort(parseISO(ls.pagoMax)||pagoFor(t,parseISO(ls.corte))))+
         (Array.isArray(ls.cuotas)&&ls.cuotas.length?'<br>Cuotas: '+ls.cuotas.map(q=>esc(q.descripcion||'Cuota')+' '+fL0(+q.cuota||0)+' ('+q.numero+'/'+q.total+')').join(', '):'')+'</p>':'<p class="stmtline">Sin estado de cuenta todavía.</p>')+
-      (readOnly||!imgOK?'':'<div class="actions"><button type="button" class="btn ghost small" data-up="'+esc(t.id)+'">Subir estado de cuenta</button></div>')+
       (readOnly?'':'<details><summary>Ajustar datos de la tarjeta</summary><div class="cfg">'+
         tf(t,'nombre','Nombre','text')+tf(t,'banco','Banco','text')+tf(t,'ultimos','Últimos 4 dígitos','text')+tf(t,'corte','Día de corte','number')+tf(t,'diaPago','Día de pago','number')+
         tf(t,'limiteL','Límite (L)','number')+tf(t,'limiteUSD','Límite (US$)','number')+tf(t,'esperado','Estimado por ciclo (L)','number')+tf(t,'tasa','Tasa anual (%)','number')+
@@ -1557,6 +1560,38 @@ render();
   },err=>{setStatus('Se perdió la conexión con el guardado. Recarga la página.','err');});
 })();
 toggleFields();
+
+/* ---------- estado de cuenta manual / pegado desde Claude ---------- */
+function parseStmtLine(txt){const o={};const t=String(txt||'');
+  const re=/([a-zA-Z]+)\s*[=:]\s*([^\s|;]+)/g;let m;while((m=re.exec(t)))o[m[1].toLowerCase()]=m[2];
+  const dt=v=>{if(!v)return '';let x=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(x)return x[1]+'-'+x[2].padStart(2,'0')+'-'+x[3].padStart(2,'0');x=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(x){const y=x[3].length===2?'20'+x[3]:x[3];return y+'-'+x[2].padStart(2,'0')+'-'+x[1].padStart(2,'0')}return ''};
+  const last=(t.match(/ESTADO\s*\|?\s*(\d{3,4})/i)||[])[1]||o.tarjeta||'';
+  return {last4:String(last).slice(-4),corte:dt(o.corte),pagoMax:dt(o.pago||o.pagomax),contadoL:o.contadol||o.contado||'',contadoUSD:o.contadousd||'',minimoL:o.minimol||o.minimo||'',minimoUSD:o.minimousd||'',limiteL:o.limitel||'',limiteUSD:o.limiteusd||'',tasa:o.tasa||'',consumoL:o.consumol||o.consumos||''};}
+function openManual(t){eCard=t.id;openE();$('eTitle').textContent='Estado de cuenta · '+t.nombre;
+  const Cp=corteAfter(t,new Date(today().getTime()-25*864e5));const ls=lastStmt(t);
+  $('eStatus').innerHTML='Copia los datos del estado de cuenta, o mándale la foto a Claude y pega aquí la línea que te devuelve.';
+  const f=(id,lab,type,val,ph)=>'<div class="field"><label for="'+id+'">'+lab+'</label><input id="'+id+'" type="'+type+'"'+(type==='number'?' step="0.01" min="0" inputmode="decimal"':'')+' value="'+esc(val==null?'':String(val))+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'></div>';
+  $('eBody').innerHTML='<div class="mform">'+
+    '<div class="field full"><label for="mPaste">Pegar línea de Claude (opcional)</label><textarea id="mPaste" rows="2" placeholder="ESTADO '+esc(t.ultimos||'8390')+' | corte=16/10/2026 | pago=06/11/2026 | contadoL=12500.00 | minimoL=379"></textarea></div>'+
+    f('mCorte','Fecha de corte','date',iso(Cp))+f('mPago','Pagar hasta','date',iso(pagoFor(t,Cp)))+
+    f('mContL','Pago de contado (L)','number','','0.00')+f('mContU','Pago de contado (US$)','number','','0.00')+
+    f('mMinL','Pago mínimo (L)','number','','0.00')+f('mLimL','Límite (L)','number',t.limiteL||'')+
+    '<label class="check full"><input type="checkbox" id="mPaid"> Ya pagué este estado de cuenta</label>'+
+    '<label class="check full"><input type="checkbox" id="mEsp" checked> Usar el pago de contado como estimado para los próximos ciclos</label></div>';
+  $('mPaste').addEventListener('input',()=>{const d=parseStmtLine($('mPaste').value);
+    if(d.corte)$('mCorte').value=d.corte;if(d.pagoMax)$('mPago').value=d.pagoMax;if(d.contadoL!=='')$('mContL').value=num(d.contadoL);if(d.contadoUSD!=='')$('mContU').value=num(d.contadoUSD);
+    if(d.minimoL!=='')$('mMinL').value=num(d.minimoL);if(d.limiteL!=='')$('mLimL').value=num(d.limiteL);$('mPaste').dataset.extra=JSON.stringify(d);
+    if(d.last4&&t.ultimos&&!d.last4.endsWith(String(t.ultimos).slice(-3)))$('eStatus').innerHTML='<span style="color:var(--warn)">Ojo: esa línea es de la tarjeta ****'+esc(d.last4)+', no de '+esc(t.nombre)+'.</span>';});
+  const b=$('eSave');b.hidden=false;b.textContent='Guardar';b.onclick=()=>{if(readOnly)return;const corte=parseISO($('mCorte').value);if(!corte){$('eStatus').innerHTML='<span style="color:var(--bad)">Falta la fecha de corte.</span>';return}
+    let x={};try{x=JSON.parse($('mPaste').dataset.extra||'{}')}catch(_){}
+    const cl=num($('mContL').value),cu=num($('mContU').value);
+    const st={corte:iso(corte),desde:'',pagoMax:$('mPago').value||'',contadoL:cl,contadoUSD:cu,minimoL:num($('mMinL').value),minimoUSD:num(x.minimoUSD),saldoL:cl,saldoUSD:cu,limiteL:num($('mLimL').value),limiteUSD:num(x.limiteUSD),disponibleL:0,disponibleUSD:0,tasa:num(x.tasa),consumoL:num(x.consumoL)||cl,cuotas:[],movimientos:[],leido:iso(today()),manual:true};
+    const L=(state.estados[t.id]||[]).filter(y=>y.corte!==st.corte);L.push(st);L.sort((a,b)=>a.corte<b.corte?1:-1);state.estados[t.id]=L.slice(0,4);
+    t.corte=corte.getDate();const pm=parseISO(st.pagoMax);if(pm)t.diaPago=pm.getDate();if(st.limiteL)t.limiteL=st.limiteL;if(st.limiteUSD)t.limiteUSD=st.limiteUSD;if(st.tasa)t.tasa=st.tasa;
+    if($('mEsp').checked&&st.consumoL)t.esperado=Math.round(st.consumoL);
+    if($('mPaid').checked)state.pagos['t_'+t.id+'@'+iso(corte)]=true;
+    closeE();commit();toast('Estado de '+t.nombre+' guardado');};}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-man]');if(!b)return;const t=state.tarjetas.find(x=>x.id===b.dataset.man);if(t)openManual(t);});
 
 /* ---------- pestañas ---------- */
 let prevView='hoy';
